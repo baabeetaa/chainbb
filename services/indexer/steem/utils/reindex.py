@@ -8,15 +8,14 @@ import time
 import sys
 import os
 
-# Connections
-nodes = [
-   'https://steemd.steemit.com'
-#     'http://192.168.1.25:8090'
-]
-s = Steem(nodes)
-# mongo = MongoClient("mongodb://mongo")
-# mongo = MongoClient("mongodb://localhost")
-mongo = MongoClient("mongodb://51.15.65.204")
+# load config from json file
+print('Reading config.json file')
+with open('../config.json') as json_config_file:
+  config = json.load(json_config_file)
+print(config)
+
+s = Steem(config['steemd_nodes'])
+mongo = MongoClient(config['mongo_url'])
 
 db = mongo.forums
 
