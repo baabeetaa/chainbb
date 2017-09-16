@@ -3,3 +3,4 @@ pymongo
 steem
 #apscheduler
 APScheduler==3.3.1
+funcy==1.8
