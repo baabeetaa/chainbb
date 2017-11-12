@@ -11,7 +11,7 @@ class GlobalNotice extends Component {
   render() {
     const { height, height_processed } = this.props.status.network
     let warning = false
-    if ( height > height_processed + 10) {
+    if ( height > height_processed + 30) {
       const blocksBehind = height - height_processed
       const timeBehind = new Date() - blocksBehind * 3 * 1000
       warning = (
