@@ -74,3 +74,13 @@ python3 reindex.py '{
   "description": "EOS Block Producers",
   "tags": ["eos-blockproducers"]
 }'
+
+python3 reindex.py '{
+  "_id": "eos-meetups",
+  "name": "EOS Meetups",
+  "group": "eos",
+  "group_order": 1,
+  "forum_order": 8,
+  "description": "EOS Meetups",
+  "tags": ["eos-meetups"]
+}'

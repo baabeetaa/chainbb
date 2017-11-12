@@ -60,7 +60,7 @@ quick_value = 100
 # last_block_processed = 12880771
 
 
-matched_tags = ['eos', 'eosio', 'eos-project', 'eos-help', 'eos-support', 'eos-dev', 'eosdev', 'eos-dapp', 'eos-launchpad', 'eos-blockproducers']
+matched_tags = ['eos', 'eosio', 'eos-project', 'eos-help', 'eos-support', 'eos-dev', 'eosdev', 'eos-dapp', 'eos-launchpad', 'eos-blockproducers', 'eos-meetups']
 
 def l(msg):
     caller = inspect.stack()[1][3]
@@ -83,7 +83,7 @@ def find_root_comment(comment):
 def is_filtered(comment):
     # check if comment should be EOS content weather root post contains:
     #   - author: eosio
-    #   - tags: eos, eosio, eos-project, eos-help, eos-support, eos-dev, eosdev, eos-dapp, eos-launchpad, eos-blockproducers
+    #   - tags: eos, eosio, eos-project, eos-help, eos-support, eos-dev, eosdev, eos-dapp, eos-launchpad, eos-blockproducers, eos-meetups
 
     root_comment = find_root_comment(comment)
 
