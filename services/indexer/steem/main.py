@@ -117,7 +117,7 @@ def find_root_comment(comment):
         parent_id = parent_author + '/' + parent_permlink
         # Grab the parsed data of the post
         # l(parent_id)
-        parent_comment = parse_post(parent_id, parent_author, parent_permlink)
+        parent_comment = load_post(parent_id, parent_author, parent_permlink)
         return find_root_comment(parent_comment)
 
 
@@ -579,7 +579,6 @@ def process_vote(_id, author, permlink):
     # Grab the parsed data of the post
     # l(_id)
     comment = load_post(_id, author, permlink)
-    comment = parse_post(_id, author, permlink)
 
     # tuanpa added here
     if is_filtered(comment) == False:
@@ -738,7 +737,6 @@ def process_rewards_pools():
     db.status.update({'_id': 'recent_claims'}, {
                      '$set': {'value': recent_claims}}, upsert=True)
 
-<<<<<<< Updated upstream
 
 def process_platform_history():
     l('platform account')
