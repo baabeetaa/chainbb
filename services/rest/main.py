@@ -1,5 +1,3 @@
-import json
-
 from flask import Flask, jsonify, request
 from pprint import pprint
 from pymongo import MongoClient
@@ -7,40 +5,34 @@ from bson.json_util import dumps
 from flask_cors import CORS, cross_origin
 from mongodb_jsonencoder import MongoJsonEncoder
 from steem import Steem
+import os
 
+ns = os.environ['namespace'] if 'namespace' in os.environ else 'chainbb'
+mongo = MongoClient("mongodb://mongo", connect=False)
+db = mongo[ns]
 
-# load config from json file
-print('Reading config.json file')
-with open('config.json') as json_config_file:
-  config = json.load(json_config_file)
-print(config)
-
+nodes = [
+    os.environ['steem_node'] if 'steem_node' in os.environ else 'localhost:5090',
+]
+s = Steem(nodes)
 
 app = Flask(__name__)
 app.json_encoder = MongoJsonEncoder
 CORS(app)
-# mongo = MongoClient("mongodb://mongo", connect=False)
-mongo = MongoClient(config['mongo_url'], connect=False)
-db = mongo.forums
 
-# nodes = [
-#     'http://steem.chainbb.com'
-#    'http://192.168.1.25:8090'
-# ]
-s = Steem(config['steemd_nodes'])
 
-def response(json, forum=False, children=False):
+def response(json, forum=False, children=False, meta=False, status='ok'):
     # Load height
     # NYI - should be cached at for 3 seconds
     statuses = db.status.find()
-    status = {}
+    network = {}
     for doc in statuses:
-        status.update({
-          str(doc['_id']): doc['value']
+        network.update({
+            str(doc['_id']): doc['value']
         })
     response = {
-        'status': 'ok',
-        'network': status,
+        'status': status,
+        'network': network,
         'data': json
     }
     if forum:
@@ -51,7 +43,12 @@ def response(json, forum=False, children=False):
         response.update({
             'children': list(children)
         })
+    if meta:
+        response.update({
+            'meta': meta
+        })
     return jsonify(response)
+
 
 def load_post(author, permlink):
     # Load the post by author/permlink
@@ -74,6 +71,7 @@ def load_post(author, permlink):
         })
     return post
 
+
 def load_replies(query, sort):
     replies = []
     results = db.replies.find(query).sort(sort)
@@ -93,58 +91,60 @@ def load_replies(query, sort):
             replies.append(post)
     return replies
 
+
 @app.route("/")
 def index():
     query = {
-      "group": {"$in": [
-        "localtesting", # localtesting never exists on live, only in dev
-        "projects",
-        "crypto",
-        "community",
-        "eos"
-      ]}
+        "group": {"$in": [
+            "localtesting",  # localtesting never exists on live, only in dev
+            "projects",
+            "crypto",
+            "community"
+        ]}
     }
-    sort = [("group_order",1),("forum_order",1)]
+    sort = [("group_order", 1), ("forum_order", 1)]
     results = db.forums.find(query).sort(sort)
-    chainbbusers = db.activeusers.find({'app': 'chainbb'}, {'_id': 1})
+    appusers = db.activeusers.find({'app': ns}, {'_id': 1})
     return response({
-      'forums': list(results),
-      'users': {
-        'stats': {
-          'total': db.activeusers.count(),
-          'chainbb': db.activeusers.count({'app': 'chainbb'}),
-        },
-        'list': list(chainbbusers)
-      }
+        'forums': list(results),
+        'users': {
+            'stats': {
+                'total': db.activeusers.count(),
+                'app': db.activeusers.count({'app': ns}),
+            },
+            'list': list(appusers)
+        }
     })
+
 
 @app.route("/forums")
 def forums():
     query = {}
-    sort = [("_id",1),("parent",1)]
+    sort = [("highlight", -1), ("_id", 1), ("parent", 1)]
     results = db.forums.find(query).sort(sort)
     return response({
-      'forums': list(results)
+        'forums': list(results)
     })
+
 
 @app.route("/@<username>")
 def account(username):
     query = {
-      'author': username
+        'author': username
     }
     fields = {
-      'author': 1,
-      'category': 1,
-      'created': 1,
-      'children': 1,
-      'json_metadata': 1,
-      'last_reply': 1,
-      'last_reply_by': 1,
-      'permlink': 1,
-      'title': 1,
-      'url': 1
+        'author': 1,
+        'category': 1,
+        'created': 1,
+        'children': 1,
+        'json_metadata': 1,
+        'last_reply': 1,
+        'last_reply_by': 1,
+        'permlink': 1,
+        'title': 1,
+        'url': 1
     }
-    sort = [("created",-1)]
+    sort = [("created", -1)]
     page = int(request.args.get('page', 1))
     perPage = 20
     skip = (page - 1) * perPage
@@ -152,10 +152,11 @@ def account(username):
     total = db.posts.count(query)
     posts = db.posts.find(query, fields).sort(sort).skip(skip).limit(limit)
     return response({
-      'posts': list(posts),
-      'total': total,
-      'page': page
+        'posts': list(posts),
+        'total': total,
+        'page': page
     })
+
 
 @app.route("/@<username>/replies")
 def replies(username):
@@ -165,163 +166,191 @@ def replies(username):
     skip = (page - 1) * perPage
     limit = perPage
     pipeline = [
-      {'$match': {
-        'parent_author': username
-      }},
-      {'$sort': sort},
-      {'$limit': limit + skip},
-      {'$skip': skip},
-      {'$project': {
-        'parent_id': {'$concat': ['$parent_author', '/', '$parent_permlink']},
-        'reply': '$$ROOT'
-      }},
-      {'$lookup': {
-        'from': 'posts',
-        'localField': 'parent_id',
-        'foreignField': '_id',
-        'as': 'parent_post'
-      }},
-      {'$lookup': {
-        'from': 'replies',
-        'localField': 'parent_id',
-        'foreignField': '_id',
-        'as': 'parent_reply'
-      }},
-      {'$project': {
-        'reply': 1,
-        'parent': {
-          '$cond': {
-            'if': { '$eq': [ "$parent_reply", [] ] },
-            'then': '$parent_post',
-            'else': '$parent_reply'
-          }
-        }
-      }},
-      {'$unwind': '$parent'},
+        {'$match': {
+            'parent_author': username,
+            'author': {'$ne': username},
+        }},
+        {'$sort': sort},
+        {'$project': {
+            'parent_id': {'$concat': ['$parent_author', '/', '$parent_permlink']},
+            'reply': '$$ROOT'
+        }},
+        {'$lookup': {
+            'from': 'posts',
+            'localField': 'parent_id',
+            'foreignField': '_id',
+            'as': 'parent_post'
+        }},
+        {'$lookup': {
+            'from': 'replies',
+            'localField': 'parent_id',
+            'foreignField': '_id',
+            'as': 'parent_reply'
+        }},
+        {'$project': {
+            'reply': 1,
+            'parent': {
+                '$cond': {
+                    'if': {'$eq': ["$parent_reply", []]},
+                    'then': '$parent_post',
+                    'else': '$parent_reply'
+                }
+            }
+        }},
+        {'$unwind': '$parent'},
+        {'$project': {
+            'reply': {
+                '_id': 1,
+                'active_votes': 1,
+                'author': 1,
+                'body': 1,
+                'category': 1,
+                'created': 1,
+                'depth': 1,
+                'json_metadata': 1,
+                'parent_author': 1,
+                'parent_permlink': 1,
+                'permlink': 1,
+                'root_namespace': 1,
+                'root_post': 1,
+                'root_title': 1,
+                'title': 1,
+                'url': 1,
+            },
+            'parent': {
+                '_id': 1,
+                'active_votes': 1,
+                'author': 1,
+                'body': 1,
+                'category': 1,
+                'created': 1,
+                'depth': 1,
+                'parent_author': 1,
+                'parent_permlink': 1,
+                'permlink': 1,
+                'namespace': 1,
+                'root_namespace': 1,
+                'root_title': 1,
+                'title': 1,
+                'url': 1,
+            }
+        }},
+        {'$limit': limit + skip},
+        {'$skip': skip},
     ]
     total = db.replies.count({'parent_author': username})
     replies = db.replies.aggregate(pipeline)
     results = []
     for idx, reply in enumerate(replies):
-      # Format parent votes
-      parent_votes = {}
-      for vote in reply['parent']['active_votes']:
-          parent_votes.update({vote[0]: vote[1]})
-      reply['parent'].pop('active_votes', None)
-      reply['parent'].update({
-          'votes': parent_votes
-      })
-      # Format reply votes
-      reply_votes = {}
-      for vote in reply['reply']['active_votes']:
-          reply_votes.update({vote[0]: vote[1]})
-      reply['reply'].pop('active_votes', None)
-      reply['reply'].update({
-          'votes': reply_votes
-      })
-      results.append(reply)
+        # Format parent votes
+        parent_votes = {}
+        for vote in reply['parent']['active_votes']:
+            parent_votes.update({vote[0]: vote[1]})
+        reply['parent'].pop('active_votes', None)
+        reply['parent'].update({
+            'votes': parent_votes
+        })
+        # Format reply votes
+        reply_votes = {}
+        for vote in reply['reply']['active_votes']:
+            reply_votes.update({vote[0]: vote[1]})
+        reply['reply'].pop('active_votes', None)
+        reply['reply'].update({
+            'votes': reply_votes
+        })
+        # Temporary way to retrieve forum
+        if 'root_namespace' in reply['reply']:
+            reply['forum'] = db.forums.find_one({
+                '_id': reply['reply']['root_namespace']
+            }, {
+                '_id': 1,
+                'creator': 1,
+                'exclusive': 1,
+                'funded': 1,
+                'name': 1,
+                'tags': 1,
+            })
+        results.append(reply)
     return response({
-      'replies': results,
-      'total': total,
-      'page': page,
+        'replies': results,
+        'total': total,
+        'page': page,
     })
+
 
 @app.route("/@<username>/responses")
 def accountResponses(username):
     query = {
-      'author': username
+        'author': username
     }
     fields = {
-      'author': 1,
-      'category': 1,
-      'created': 1,
-      'children': 1,
-      'json_metadata': 1,
-      'last_reply': 1,
-      'last_reply_by': 1,
-      'parent_author': 1,
-      'parent_permlink': 1,
-      'permlink': 1,
-      'root_post': 1,
-      'root_title': 1,
-      'url': 1
+        'author': 1,
+        'category': 1,
+        'created': 1,
+        'children': 1,
+        'json_metadata': 1,
+        'last_reply': 1,
+        'last_reply_by': 1,
+        'parent_author': 1,
+        'parent_permlink': 1,
+        'permlink': 1,
+        'root_post': 1,
+        'root_title': 1,
+        'url': 1
     }
-    sort = [("created",-1)]
+    sort = [("created", -1)]
     page = int(request.args.get('page', 1))
     perPage = 20
     skip = (page - 1) * perPage
     limit = perPage
     total = db.replies.count(query)
-    responses = db.replies.find(query, fields).sort(sort).skip(skip).limit(limit)
+    responses = db.replies.find(query, fields).sort(
+        sort).skip(skip).limit(limit)
     return response({
-      'responses': list(responses),
-      'total': total,
-      'page': page
+        'responses': list(responses),
+        'total': total,
+        'page': page
     })
 
-@app.route("/crypto")
-def crypto():
-    query = {
-      "group": {"$in": ["chainbb", "crypto-general", "crypto-index"]}
-    }
-    sort = [("group_order",1),("forum_order",1)]
-    results = db.forums.find(query).sort(sort)
-    return response(list(results))
-
-@app.route("/steem")
-def steem():
-    query = {
-      "group": {"$in": ["steem-general", "steem-projects"]}
-    }
-    sort = [("group_order",1),("forum_order",1)]
-    results = db.forums.find(query).sort(sort)
-    return response(list(results))
-
-@app.route("/eos")
-def eos():
-    query = {
-      "group": {"$in": ["eos"]}
-    }
-    sort = [("group_order",1),("forum_order",1)]
-    results = db.forums.find(query).sort(sort)
-    return response(list(results))
 
 @app.route("/tags")
 def tags():
     query = {}
-    sort = [("last_reply",-1)]
+    sort = [("last_reply", -1)]
     results = db.topics.find(query).sort(sort)
     return response(list(results))
+
 
 @app.route("/search")
 def search():
     pipeline = [
-      {
-        '$match': {
-          '$text': {
-            '$search': request.args.get('q')
-          }
+        {
+            '$match': {
+                '$text': {
+                    '$search': request.args.get('q')
+                }
+            }
+        },
+        {
+            '$sort': {
+                'score': {
+                    '$meta': "textScore"
+                }
+            }
+        },
+        {
+            '$project': {
+                'title': '$title',
+                'description': '$url'
+            }
+        },
+        {
+            '$limit': 5
         }
-      },
-      {
-        '$sort': {
-          'score': {
-            '$meta': "textScore"
-          }
-        }
-      },
-      {
-        '$project': {
-          'title': '$title',
-          'description': '$url'
-        }
-      },
-      {
-        '$limit': 5
-      }
     ]
     results = db.posts.aggregate(pipeline)
     return response(list(results))
+
 
 @app.route('/forum/<slug>')
 def forum(slug):
@@ -330,13 +359,26 @@ def forum(slug):
         '_id': slug
     }
     forum = db.forums.find_one(query)
+    # No forum? Look for a reservation
+    if not forum:
+        reservation = db.forum_requests.find_one(query)
+        return response({}, meta={'reservation': reservation}, status='not-found')
+    # No tags or authors? It's unconfigured
+    if 'tags' not in forum and 'accounts' not in forum:
+        return response(list(), forum=forum, meta={'configured': False})
     # Load children forums
     query = {
-      'parent': str(forum['_id'])
+        'parent': str(forum['_id'])
     }
     children = db.forums.find(query)
     # Load the posts
     query = {}
+    # ?filter=all will allow display of all posts
+    postFilter = request.args.get('filter', False)
+    if postFilter != 'all':
+        query['_removedFrom'] = {
+            '$nin': [slug]
+        }
     if 'tags' in forum and len(forum['tags']) > 0:
         query.update({
             'category': {
@@ -349,6 +391,15 @@ def forum(slug):
                 '$in': forum['accounts']
             }
         })
+    if postFilter != False and postFilter != 'all':
+        query.update({
+            'category': postFilter
+        })
+    if 'exclusive' in forum and forum['exclusive'] == True:
+        if postFilter == False and postFilter == 'all':
+            query.pop('category', None)
+        query.update({'namespace': slug})
+    # If we have an empty query, it's an unconfigured forum
     fields = {
         'author': 1,
         'category': 1,
@@ -365,13 +416,39 @@ def forum(slug):
         'title': 1,
         'url': 1
     }
-    sort = [("cbb.sticky",-1),("active",-1)]
+    # ?filter=all should also display the _removedFrom field
+    if postFilter == 'all':
+        fields['_removedFrom'] = 1
+    sort = [("active", -1)]
     page = int(request.args.get('page', 1))
     perPage = 20
     skip = (page - 1) * perPage
     limit = perPage
     results = db.posts.find(query, fields).sort(sort).skip(skip).limit(limit)
-    return response(list(results), forum=forum, children=children)
+    return response(list(results), forum=forum, children=children, meta={'query': query, 'sort': sort})
+
+@app.route('/status/<slug>')
+def status(slug):
+    # Load the specified forum
+    query = {
+        '_id': slug
+    }
+    forum = db.forums.find_one(query)
+    # And those who funded it
+    query = {
+        'ns': slug
+    }
+    funding = db.funding.find(query).sort([('timestamp', -1)])
+    # Total contributions
+    contributions = db.funding.aggregate([
+        {'$match': {'ns': slug}},
+        {'$group': {'_id': '$from', 'count': {'$sum': 1}, 'total': {'$sum': '$steem_value'}}},
+        {'$sort': {'total': -1}}
+    ])
+    return response({
+        'history': list(funding),
+        'contributors': list(contributions)
+    }, forum=forum)
 
 @app.route('/topics/<category>')
 def topics(category):
@@ -388,24 +465,26 @@ def topics(category):
         'title': 1,
         'url': 1
     }
-    sort = [("last_reply",-1),("created",-1)]
+    sort = [("last_reply", -1), ("created", -1)]
     results = db.posts.find(query, fields).sort(sort).limit(20)
     return response(list(results))
+
 
 @app.route('/<category>/@<author>/<permlink>')
 def post(category, author, permlink):
     # Load the specified post
     post = load_post(author, permlink)
     if post:
-      # Load the specified forum
-      query = {
-          'tags': {'$in': [post['category']]}
-      }
-      forum = db.forums.find_one(query)
-      return response(post, forum=forum)
+        # Load the specified forum
+        query = {
+            'tags': {'$in': [post['category']]}
+        }
+        forum = db.forums.find_one(query)
+        return response(post, forum=forum)
     else:
-      post = s.get_content(author, permlink).copy()
-      return response(post)
+        post = s.get_content(author, permlink).copy()
+        return response(post)
+
 
 @app.route('/<category>/@<author>/<permlink>/responses')
 def responses(category, author, permlink):
@@ -416,6 +495,7 @@ def responses(category, author, permlink):
         ('created', 1)
     ]
     return response(list(load_replies(query, sort)))
+
 
 @app.route('/active')
 def active():
@@ -433,10 +513,22 @@ def active():
         'title': 1,
         'url': 1
     }
-    sort = [("last_reply",-1),("created",-1)]
+    sort = [("last_reply", -1), ("created", -1)]
     limit = 20
     results = db.posts.find(query, fields).sort(sort).limit(limit)
     return response(list(results))
+
+@app.route('/api/ns_lookup')
+def ns_lookup():
+    ns = request.args.get('ns', False)
+    query = {
+        '_id': ns
+    }
+    forums = db.forums.find_one(query)
+    requests = db.forum_requests.find_one(query)
+    return response({
+        'exists': bool(forums or requests)
+    })
 
 @app.route('/height')
 def height():
@@ -445,11 +537,17 @@ def height():
     }
     return response(db.status.find_one(query))
 
+
 @app.route("/config")
 def config():
     results = db.forums.find()
     return response(list(results))
 
+@app.route("/platforms")
+def platforms():
+    return response(db.stats.find_one({
+        '_id': 'users-24h'
+    }))
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', debug=True)
