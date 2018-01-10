@@ -14,10 +14,13 @@ with open('../config.json') as json_config_file:
   config = json.load(json_config_file)
 print(config)
 
+ns = os.environ['namespace'] if 'namespace' in os.environ else 'eostalk'
+
 s = Steem(config['steemd_nodes'])
 mongo = MongoClient(config['mongo_url'])
 
-db = mongo.forums
+db = mongo[ns]
+# db = mongo.forums
 
 data = json.loads(sys.argv[1])
 

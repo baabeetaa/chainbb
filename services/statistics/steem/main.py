@@ -5,9 +5,16 @@ import time
 import inspect
 import sys
 import os
+import json
 
-ns = os.environ['namespace'] if 'namespace' in os.environ else 'chainbb'
-mongo = MongoClient("mongodb://mongo")
+# load config from json file
+print('Reading config.json file')
+with open('config.json') as json_config_file:
+    config = json.load(json_config_file)
+print(config)
+
+ns = os.environ['namespace'] if 'namespace' in os.environ else 'eostalk'
+mongo = MongoClient(config['mongo_url'])
 db = mongo[ns]
 
 

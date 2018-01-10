@@ -16,15 +16,24 @@ from steem.steemd import Steemd
 from steem.utils import block_num_from_hash
 from bs4 import BeautifulSoup
 
+# load config from json file
+print('Reading config.json file')
+with open('config.json') as json_config_file:
+    config = json.load(json_config_file)
+print(config)
+
 #########################################
 # Connections
 #########################################
 
 # steemd
-nodes = [
-    # 'http://192.168.1.50:8090',
-    os.environ['steem_node'] if 'steem_node' in os.environ else 'localhost:5090',
-]
+#nodes = [
+#    # 'http://192.168.1.50:8090',
+#    os.environ['steem_node'] if 'steem_node' in os.environ else 'http://51.15.55.185:8090',
+#]
+
+nodes = config['steemd_nodes']
+
 s = Steem(nodes)
 d = Steemd(nodes)
 b = Blockchain(steemd_instance=s, mode='head')
@@ -37,8 +46,9 @@ fullnodes = [
 fn = Steem(fullnodes)
 
 # MongoDB
-ns = os.environ['namespace'] if 'namespace' in os.environ else 'chainbb'
-mongo = MongoClient('mongodb://mongo')
+ns = os.environ['namespace'] if 'namespace' in os.environ else 'eostalk'
+# mongo = MongoClient('mongodb://mongo')
+mongo = MongoClient(config['mongo_url'])
 db = mongo[ns]
 
 # MongoDB Schema Enforcement

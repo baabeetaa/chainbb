@@ -3,7 +3,7 @@ services:
     account:
         build: ./services/account
         environment:
-            namespace: "chainbb"
+            namespace: "eostalk"
             steem_node: "https://rpc.buildteam.io"
         links:
             - mongo
@@ -27,7 +27,7 @@ services:
     rest:
         build: ./services/rest
         environment:
-            namespace: "chainbb"
+            namespace: "eostalk"
         external_links:
             - mongo:forums_mongo_1
         ports:
@@ -40,7 +40,7 @@ services:
         links:
             - mongo
         environment:
-            namespace: "chainbb"
+            namespace: "eostalk"
             steem_node: "https://rpc.buildteam.io"
         restart: on-failure
         volumes:
@@ -48,7 +48,7 @@ services:
     steem:
         build: ./services/indexer/steem
         environment:
-            namespace: "chainbb"
+            namespace: "eostalk"
             steem_node: "https://steem.chainbb.com"
         links:
             - mongo

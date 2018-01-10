@@ -6,14 +6,22 @@ from flask_cors import CORS, cross_origin
 from mongodb_jsonencoder import MongoJsonEncoder
 from steem import Steem
 import os
+import json
 
-ns = os.environ['namespace'] if 'namespace' in os.environ else 'chainbb'
-mongo = MongoClient("mongodb://mongo", connect=False)
+# load config from json file
+print('Reading config.json file')
+with open('config.json') as json_config_file:
+    config = json.load(json_config_file)
+print(config)
+
+ns = os.environ['namespace'] if 'namespace' in os.environ else 'eostalk'
+mongo = MongoClient(config['mongo_url'], connect=False)
 db = mongo[ns]
 
-nodes = [
-    os.environ['steem_node'] if 'steem_node' in os.environ else 'localhost:5090',
-]
+#nodes = [
+#    os.environ['steem_node'] if 'steem_node' in os.environ else 'http://51.15.55.185:8090',
+#]
+nodes = config['steemd_nodes']
 s = Steem(nodes)
 
 app = Flask(__name__)
