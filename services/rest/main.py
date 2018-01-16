@@ -557,5 +557,27 @@ def platforms():
         '_id': 'users-24h'
     }))
 
+# most recent posts
+@app.route('/newspage/recent')
+def newspage_recent():
+    query = {
+    }
+
+    sort = [("last_reply", -1), ("created", -1)]
+    limit = 10
+    results = db.posts.find(query).sort(sort).limit(limit)
+    return response(list(results))
+
+# top voted posts
+@app.route('/newspage/voted')
+def newspage_voted():
+    query = {
+    }
+
+    sort = [("net_votes", -1)]
+    limit = 10
+    results = db.posts.find(query).sort(sort).limit(limit)
+    return response(list(results))
+
 if __name__ == "__main__":
     app.run(host='0.0.0.0', debug=True)
