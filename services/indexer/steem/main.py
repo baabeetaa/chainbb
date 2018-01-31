@@ -122,13 +122,13 @@ def find_root_comment(comment):
     if comment['parent_author'] == '':
         return comment
     else:
-        parent_author = comment['parent_author']
-        parent_permlink = comment['parent_permlink']
-        parent_id = parent_author + '/' + parent_permlink
-        # Grab the parsed data of the post
-        # l(parent_id)
-        parent_comment = load_post(parent_id, parent_author, parent_permlink)
-        return find_root_comment(parent_comment)
+        url = comment['url'].split('#')[0]
+        parts = url.split('/')
+        root_author = parts[2].replace('@', '')
+        root_permlink = parts[3]
+        root_id = root_author + '/' + root_permlink
+        root_comment = load_post(root_id, root_author, root_permlink)
+        return root_comment
 
 
 def is_filtered(comment):
@@ -614,8 +614,7 @@ def collapse_votes(votes):
     collapsed = []
     # Convert time to timestamps
     for key, vote in enumerate(votes):
-        votes[key]['time'] = int(datetime.strptime(
-            votes[key]['time'], '%Y-%m-%dT%H:%M:%S').strftime('%s'))
+        votes[key]['time'] = int(datetime.strptime(votes[key]['time'], '%Y-%m-%dT%H:%M:%S').strftime('%s'))
     # Sort based on time
     sortedVotes = sorted(votes, key=lambda k: k['time'])
     # Iterate and append to return value
@@ -629,8 +628,7 @@ def collapse_votes(votes):
 
 def process_post(opData, block, quick=False):
     # Derive the timestamp
-    ts = float(datetime.strptime(
-        block['timestamp'], '%Y-%m-%dT%H:%M:%S').strftime('%s'))
+    ts = float(datetime.strptime(block['timestamp'], '%Y-%m-%dT%H:%M:%S').strftime('%s'))
     # Create the author/permlink identifier
     author = opData['author']
     permlink = opData['permlink']
