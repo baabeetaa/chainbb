@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import time
+import requests
 from datetime import datetime, timedelta
 from pprint import pprint
 
@@ -166,8 +167,14 @@ def process_op(op, block, quick=False):
     if opType == 'custom_json' and opData['id'] == ns:
         process_custom_op(opData)
     if opType == 'vote' and quick == False:
+        response = requests.post(config['rootpostsearch'] + '/api/lookup/filter/vote', data=json.dumps(opData), headers={'Content-type': 'application/json'})
+        if response.json()['data'] == False:
+            return
         queue_parent_update(opData)
     if opType == 'comment':
+        response = requests.post(config['rootpostsearch'] + '/api/lookup/filter/comment', data=json.dumps(opData), headers={'Content-type': 'application/json'})
+        if response.json()['data'] == False:
+            return
         process_post(opData, block, quick=False)
     if opType == 'delete_comment':
         remove_post(opData)
@@ -591,8 +598,8 @@ def process_vote(_id, author, permlink):
     comment = load_post(_id, author, permlink)
 
     # tuanpa added here
-    if is_filtered(comment) == False:
-        return
+    # if is_filtered(comment) == False:
+    #     return
 
     l(_id)
 
@@ -637,8 +644,8 @@ def process_post(opData, block, quick=False):
     comment = load_post(_id, author, permlink)
 
     # tuanpa added here
-    if is_filtered(comment) == False:
-        return
+    # if is_filtered(comment) == False:
+    #     return
 
     l(_id)
 
@@ -693,6 +700,7 @@ def process_post(opData, block, quick=False):
 
 
 def rebuild_forums_cache():
+    l('rebuild_forums_cache')
     # l('rebuilding forums cache ({} forums)'.format(len(list(forums))))
     forums = db.forums.find()
     forums_cache.clear()
@@ -720,6 +728,7 @@ def process_vote_queue():
 
 
 def process_global_props():
+    l('process_global_props')
     global props
     global sbd_median_price
     props = d.get_dynamic_global_properties()
@@ -736,6 +745,7 @@ def process_global_props():
 
 
 def process_rewards_pools():
+    l('process_rewards_pools')
     # Save reward pool info
     fund = s.get_reward_fund('post')
     reward_balance = float(fund['reward_balance'].split(' ')[0])
@@ -772,6 +782,7 @@ def process_platform_history():
 
 
 def rebuild_bots_cache():
+    l('rebuild_bots_cache')
     global bots
     docs = db.bots.find()
     for bot in docs:
@@ -790,7 +801,7 @@ if __name__ == '__main__':
     rebuild_bots_cache()
 
     scheduler = BackgroundScheduler()
-    scheduler.add_job(process_global_props, 'interval', seconds=9, id='process_global_props')
+    scheduler.add_job(process_global_props, 'interval', seconds=30, id='process_global_props')
     scheduler.add_job(rebuild_forums_cache, 'interval', minutes=1, id='rebuild_forums_cache')
     scheduler.add_job(rebuild_bots_cache, 'interval', minutes=1, id='rebuild_bots_cache')
     scheduler.add_job(process_vote_queue, 'interval', seconds=15, id='process_vote_queue')

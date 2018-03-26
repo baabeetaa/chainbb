@@ -1,6 +1,7 @@
 {
   "mongo_url":"mongodb://mongo",
   "steemd_nodes": [
-    "https://steemd.steemit.com"
+        "https://api.steemit.com",
+        "https://steem.chainbb.com"
   ]
 }
