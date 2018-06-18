@@ -107,7 +107,7 @@ quick_value = 100
 # last_block_processed = 12880771
 
 
-matched_tags = ['eos', 'eosio', 'eos-project', 'eos-help', 'eos-support', 'eos-dev', 'eosdev', 'eos-dapp', 'eos-launchpad', 'eos-blockproducers', 'eos-meetups', 'eos-gov', 'eos-price']
+matched_tags = ['eos', 'eosio', 'eos-project', 'eos-help', 'eos-support', 'eos-dev', 'eosdev', 'eos-dapp', 'eos-launchpad', 'eos-blockproducers', 'eos-meetups', 'eos-gov', 'eos-price', 'eos-disputes']
 
 def l(msg):
     caller = inspect.stack()[1][3]
