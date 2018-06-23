@@ -101,29 +101,30 @@ quick_value = 100
 # last_block_processed = 12880771
 
 
-matched_tags = ['eos', 'eosio', 'eos-project', 'eos-help', 'eos-support', 'eos-dev', 'eosdev', 'eos-dapp', 'eos-launchpad', 'eos-blockproducers', 'eos-meetups', 'eos-gov', 'eos-price', 'eos-disputes']
+# matched_tags = ['eos', 'eosio', 'eos-project', 'eos-help', 'eos-support', 'eos-dev', 'eosdev', 'eos-dapp', 'eos-launchpad', 'eos-blockproducers', 'eos-meetups', 'eos-gov', 'eos-price', 'eos-disputes']
 
 def l(msg):
     caller = inspect.stack()[1][3]
     print('[FORUM][INDEXER][{}] {}'.format(str(caller), str(msg)))
     sys.stdout.flush()
 
+
 def sanitize(string):
     return BeautifulSoup(string, 'html.parser').get_text()
 
 
-def find_root_comment(comment):
-    # check if this is root post
-    if comment['parent_author'] == '':
-        return comment
-    else:
-        url = comment['url'].split('#')[0]
-        parts = url.split('/')
-        root_author = parts[2].replace('@', '')
-        root_permlink = parts[3]
-        root_id = root_author + '/' + root_permlink
-        root_comment = load_post(root_id, root_author, root_permlink)
-        return root_comment
+# def find_root_comment(comment):
+#     # check if this is root post
+#     if comment['parent_author'] == '':
+#         return comment
+#     else:
+#         url = comment['url'].split('#')[0]
+#         parts = url.split('/')
+#         root_author = parts[2].replace('@', '')
+#         root_permlink = parts[3]
+#         root_id = root_author + '/' + root_permlink
+#         root_comment = load_post(root_id, root_author, root_permlink)
+#         return root_comment
 
 
 def process_op(op, block, quick=False):
@@ -132,25 +133,24 @@ def process_op(op, block, quick=False):
     opData = op[1]
     if opType == 'custom_json' and opData['id'] == ns:
         process_custom_op(opData)
-    if opType == 'vote' and not quick:
+    elif opType == 'vote' and not quick:
         response = requests.post(config['rootpostsearch'] + '/api/lookup/filter/vote', data=json.dumps(opData), headers={'Content-type': 'application/json'})
-        if not response.json()['data']:
-            return
-        queue_parent_update(opData)
-    if opType == 'comment':
+        if response.json()['data']:
+            queue_parent_update(opData)
+    elif opType == 'comment':
         response = requests.post(config['rootpostsearch'] + '/api/lookup/filter/comment', data=json.dumps(opData), headers={'Content-type': 'application/json'})
-        if not response.json()['data']:
-            return
-        process_post(opData, block, quick=False)
-    if opType == 'delete_comment':
+        if response.json()['data']:
+            process_post(opData, block, quick=False)
+    elif opType == 'delete_comment':
         remove_post(opData)
-    if opType == 'transfer' and opData['to'] == ns:
+    elif opType == 'transfer' and opData['to'] == ns:
         # Format the data better
         amount, symbol = opData['amount'].split(" ")
         opData['amount'] = float(amount)
         opData['symbol'] = symbol
         # Process incoming transfer
         process_incoming_transfer(opData)
+
 
 def process_incoming_transfer(opData):
     # Save record of the op
@@ -187,6 +187,7 @@ def process_incoming_transfer(opData):
         # l(opData)
         # l(block)
         pass
+
 
 def update_funding(opData):
     db.funding.update({
@@ -243,6 +244,7 @@ def process_namespace_funding(opData):
             l('invalid namespace: {}'.format(opData['ns']))
             l(opData)
 
+
 def process_custom_op(custom_json):
     # Process the JSON
     op = json.loads(custom_json['json'])
@@ -269,6 +271,7 @@ def process_custom_op(custom_json):
         process_forum_config(opData, custom_json)
     if opType == 'moderate_post':
         process_moderate_post(opData, custom_json)
+
 
 def process_forum_config(opData, custom_json):
     operator = custom_json['required_posting_auths'][0]
@@ -304,6 +307,7 @@ def process_forum_config(opData, custom_json):
         pprint(custom_json)
         l('error processing')
         pass
+
 
 def process_forum_reserve(opData, custom_json):
     operator = custom_json['required_posting_auths'][0]
@@ -348,6 +352,7 @@ def process_moderate_post(opData, custom_json):
                 db.replies.update({'root_post': topic}, {'$pull': {
                     '_removedFrom': forum
                 }})
+
 
 def isModerator(user, forum):
     forum = db.forums.find_one({'_id': forum})
