@@ -27,12 +27,6 @@ print(config)
 # Connections
 #########################################
 
-# steemd
-#nodes = [
-#    # 'http://192.168.1.50:8090',
-#    os.environ['steem_node'] if 'steem_node' in os.environ else 'http://51.15.55.185:8090',
-#]
-
 nodes = config['steemd_nodes']
 
 s = Steem(nodes)
@@ -67,9 +61,9 @@ if request_index not in request_collection.index_information():
 # Which block was last processed
 init = db.status.find_one({'_id': 'height_processed'})
 if(init):
-  last_block_processed = int(init['value'])
+    last_block_processed = int(init['value'])
 else:
-  last_block_processed = 10000000
+    last_block_processed = 10000000
 
 # Global Properties
 props = {}
@@ -107,58 +101,31 @@ quick_value = 100
 # last_block_processed = 12880771
 
 
-matched_tags = ['eos', 'eosio', 'eos-project', 'eos-help', 'eos-support', 'eos-dev', 'eosdev', 'eos-dapp', 'eos-launchpad', 'eos-blockproducers', 'eos-meetups', 'eos-gov', 'eos-price', 'eos-disputes']
+# matched_tags = ['eos', 'eosio', 'eos-project', 'eos-help', 'eos-support', 'eos-dev', 'eosdev', 'eos-dapp', 'eos-launchpad', 'eos-blockproducers', 'eos-meetups', 'eos-gov', 'eos-price', 'eos-disputes']
 
 def l(msg):
     caller = inspect.stack()[1][3]
     print('[FORUM][INDEXER][{}] {}'.format(str(caller), str(msg)))
     sys.stdout.flush()
 
+
 def sanitize(string):
     return BeautifulSoup(string, 'html.parser').get_text()
 
 
-def find_root_comment(comment):
-    # check if this is root post
-    if comment['parent_author'] == '':
-        return comment
-    else:
-        url = comment['url'].split('#')[0]
-        parts = url.split('/')
-        root_author = parts[2].replace('@', '')
-        root_permlink = parts[3]
-        root_id = root_author + '/' + root_permlink
-        root_comment = load_post(root_id, root_author, root_permlink)
-        return root_comment
+# def find_root_comment(comment):
+#     # check if this is root post
+#     if comment['parent_author'] == '':
+#         return comment
+#     else:
+#         url = comment['url'].split('#')[0]
+#         parts = url.split('/')
+#         root_author = parts[2].replace('@', '')
+#         root_permlink = parts[3]
+#         root_id = root_author + '/' + root_permlink
+#         root_comment = load_post(root_id, root_author, root_permlink)
+#         return root_comment
 
-
-def is_filtered(comment):
-    # check if comment should be EOS content weather root post contains:
-    #   - author: eosio
-    #   - tags: matched_tags
-
-    root_comment = find_root_comment(comment)
-
-    if root_comment['author'] == 'eosio':
-        return True
-
-
-    json_metadata = root_comment['json_metadata']
-
-    if isinstance(json_metadata, dict) and 'tags' in json_metadata and isinstance(json_metadata['tags'], list):
-        if any(tag in matched_tags for tag in json_metadata['tags']):
-            return True
-    else:
-        try:
-            if isinstance(json_metadata, str) and len(json_metadata) > 0:
-                metadata = json.loads(json_metadata)
-                if 'tags' in metadata:
-                    if any(tag in matched_tags for tag in metadata['tags']):
-                        return True
-        except ValueError as e:
-            l("ValueError {}".format(str(e)))
-
-    return False
 
 def process_op(op, block, quick=False):
     # Split the array into type and data
@@ -166,25 +133,24 @@ def process_op(op, block, quick=False):
     opData = op[1]
     if opType == 'custom_json' and opData['id'] == ns:
         process_custom_op(opData)
-    if opType == 'vote' and quick == False:
+    elif opType == 'vote' and not quick:
         response = requests.post(config['rootpostsearch'] + '/api/lookup/filter/vote', data=json.dumps(opData), headers={'Content-type': 'application/json'})
-        if response.json()['data'] == False:
-            return
-        queue_parent_update(opData)
-    if opType == 'comment':
+        if response.json()['data']:
+            queue_parent_update(opData)
+    elif opType == 'comment':
         response = requests.post(config['rootpostsearch'] + '/api/lookup/filter/comment', data=json.dumps(opData), headers={'Content-type': 'application/json'})
-        if response.json()['data'] == False:
-            return
-        process_post(opData, block, quick=False)
-    if opType == 'delete_comment':
+        if response.json()['data']:
+            process_post(opData, block, quick=False)
+    elif opType == 'delete_comment':
         remove_post(opData)
-    if opType == 'transfer' and opData['to'] == ns:
+    elif opType == 'transfer' and opData['to'] == ns:
         # Format the data better
         amount, symbol = opData['amount'].split(" ")
         opData['amount'] = float(amount)
         opData['symbol'] = symbol
         # Process incoming transfer
         process_incoming_transfer(opData)
+
 
 def process_incoming_transfer(opData):
     # Save record of the op
@@ -221,6 +187,7 @@ def process_incoming_transfer(opData):
         # l(opData)
         # l(block)
         pass
+
 
 def update_funding(opData):
     db.funding.update({
@@ -277,6 +244,7 @@ def process_namespace_funding(opData):
             l('invalid namespace: {}'.format(opData['ns']))
             l(opData)
 
+
 def process_custom_op(custom_json):
     # Process the JSON
     op = json.loads(custom_json['json'])
@@ -303,6 +271,7 @@ def process_custom_op(custom_json):
         process_forum_config(opData, custom_json)
     if opType == 'moderate_post':
         process_moderate_post(opData, custom_json)
+
 
 def process_forum_config(opData, custom_json):
     operator = custom_json['required_posting_auths'][0]
@@ -338,6 +307,7 @@ def process_forum_config(opData, custom_json):
         pprint(custom_json)
         l('error processing')
         pass
+
 
 def process_forum_reserve(opData, custom_json):
     operator = custom_json['required_posting_auths'][0]
@@ -382,6 +352,7 @@ def process_moderate_post(opData, custom_json):
                 db.replies.update({'root_post': topic}, {'$pull': {
                     '_removedFrom': forum
                 }})
+
 
 def isModerator(user, forum):
     forum = db.forums.find_one({'_id': forum})
@@ -596,11 +567,6 @@ def process_vote(_id, author, permlink):
     # Grab the parsed data of the post
     # l(_id)
     comment = load_post(_id, author, permlink)
-
-    # tuanpa added here
-    # if is_filtered(comment) == False:
-    #     return
-
     l(_id)
 
     # Ensure we a post was returned
@@ -642,11 +608,6 @@ def process_post(opData, block, quick=False):
     _id = author + '/' + permlink
     # Grab the parsed data of the post
     comment = load_post(_id, author, permlink)
-
-    # tuanpa added here
-    # if is_filtered(comment) == False:
-    #     return
-
     l(_id)
 
     if 'namespace' in opData:
@@ -733,14 +694,11 @@ def process_global_props():
     global sbd_median_price
     props = d.get_dynamic_global_properties()
     # Save height
-    db.status.update({'_id': 'height'}, {
-                     '$set': {'value': props['last_irreversible_block_num']}}, upsert=True)
+    db.status.update({'_id': 'height'}, {'$set': {'value': props['last_irreversible_block_num']}}, upsert=True)
     # Save steem_per_mvests
     sbd_median_price = c.sbd_median_price()
-    db.status.update({'_id': 'sbd_median_price'}, {
-                     '$set': {'value': sbd_median_price}}, upsert=True)
-    db.status.update({'_id': 'steem_per_mvests'}, {
-                     '$set': {'value': c.steem_per_mvests()}}, upsert=True)
+    db.status.update({'_id': 'sbd_median_price'}, {'$set': {'value': sbd_median_price}}, upsert=True)
+    db.status.update({'_id': 'steem_per_mvests'}, {'$set': {'value': c.steem_per_mvests()}}, upsert=True)
     # l('Props updated to #{}'.format(props['last_irreversible_block_num']))
 
 
@@ -749,11 +707,9 @@ def process_rewards_pools():
     # Save reward pool info
     fund = s.get_reward_fund('post')
     reward_balance = float(fund['reward_balance'].split(' ')[0])
-    db.status.update({'_id': 'reward_balance'}, {
-                     '$set': {'value': reward_balance}}, upsert=True)
+    db.status.update({'_id': 'reward_balance'}, {'$set': {'value': reward_balance}}, upsert=True)
     recent_claims = int(fund['recent_claims'].split(' ')[0])
-    db.status.update({'_id': 'recent_claims'}, {
-                     '$set': {'value': recent_claims}}, upsert=True)
+    db.status.update({'_id': 'recent_claims'}, {'$set': {'value': recent_claims}}, upsert=True)
 
 
 def process_platform_history():
