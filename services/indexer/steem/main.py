@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import time
+import requests
 from datetime import datetime, timedelta
 from pprint import pprint
 
@@ -25,12 +26,6 @@ print(config)
 #########################################
 # Connections
 #########################################
-
-# steemd
-#nodes = [
-#    # 'http://192.168.1.50:8090',
-#    os.environ['steem_node'] if 'steem_node' in os.environ else 'http://51.15.55.185:8090',
-#]
 
 nodes = config['steemd_nodes']
 
@@ -66,9 +61,9 @@ if request_index not in request_collection.index_information():
 # Which block was last processed
 init = db.status.find_one({'_id': 'height_processed'})
 if(init):
-  last_block_processed = int(init['value'])
+    last_block_processed = int(init['value'])
 else:
-  last_block_processed = 10000000
+    last_block_processed = 10000000
 
 # Global Properties
 props = {}
@@ -106,58 +101,31 @@ quick_value = 100
 # last_block_processed = 12880771
 
 
-matched_tags = ['eos', 'eosio', 'eos-project', 'eos-help', 'eos-support', 'eos-dev', 'eosdev', 'eos-dapp', 'eos-launchpad', 'eos-blockproducers', 'eos-meetups', 'eos-gov', 'eos-price']
+# matched_tags = ['eos', 'eosio', 'eos-project', 'eos-help', 'eos-support', 'eos-dev', 'eosdev', 'eos-dapp', 'eos-launchpad', 'eos-blockproducers', 'eos-meetups', 'eos-gov', 'eos-price', 'eos-disputes']
 
 def l(msg):
     caller = inspect.stack()[1][3]
     print('[FORUM][INDEXER][{}] {}'.format(str(caller), str(msg)))
     sys.stdout.flush()
 
+
 def sanitize(string):
     return BeautifulSoup(string, 'html.parser').get_text()
 
 
-def find_root_comment(comment):
-    # check if this is root post
-    if comment['parent_author'] == '':
-        return comment
-    else:
-        parent_author = comment['parent_author']
-        parent_permlink = comment['parent_permlink']
-        parent_id = parent_author + '/' + parent_permlink
-        # Grab the parsed data of the post
-        # l(parent_id)
-        parent_comment = load_post(parent_id, parent_author, parent_permlink)
-        return find_root_comment(parent_comment)
+# def find_root_comment(comment):
+#     # check if this is root post
+#     if comment['parent_author'] == '':
+#         return comment
+#     else:
+#         url = comment['url'].split('#')[0]
+#         parts = url.split('/')
+#         root_author = parts[2].replace('@', '')
+#         root_permlink = parts[3]
+#         root_id = root_author + '/' + root_permlink
+#         root_comment = load_post(root_id, root_author, root_permlink)
+#         return root_comment
 
-
-def is_filtered(comment):
-    # check if comment should be EOS content weather root post contains:
-    #   - author: eosio
-    #   - tags: matched_tags
-
-    root_comment = find_root_comment(comment)
-
-    if root_comment['author'] == 'eosio':
-        return True
-
-
-    json_metadata = root_comment['json_metadata']
-
-    if isinstance(json_metadata, dict) and 'tags' in json_metadata and isinstance(json_metadata['tags'], list):
-        if any(tag in matched_tags for tag in json_metadata['tags']):
-            return True
-    else:
-        try:
-            if isinstance(json_metadata, str) and len(json_metadata) > 0:
-                metadata = json.loads(json_metadata)
-                if 'tags' in metadata:
-                    if any(tag in matched_tags for tag in metadata['tags']):
-                        return True
-        except ValueError as e:
-            l("ValueError {}".format(str(e)))
-
-    return False
 
 def process_op(op, block, quick=False):
     # Split the array into type and data
@@ -165,19 +133,24 @@ def process_op(op, block, quick=False):
     opData = op[1]
     if opType == 'custom_json' and opData['id'] == ns:
         process_custom_op(opData)
-    if opType == 'vote' and quick == False:
-        queue_parent_update(opData)
-    if opType == 'comment':
-        process_post(opData, block, quick=False)
-    if opType == 'delete_comment':
+    elif opType == 'vote' and not quick:
+        response = requests.post(config['rootpostsearch'] + '/api/lookup/filter/vote', data=json.dumps(opData), headers={'Content-type': 'application/json'})
+        if response.json()['data']:
+            queue_parent_update(opData)
+    elif opType == 'comment':
+        response = requests.post(config['rootpostsearch'] + '/api/lookup/filter/comment', data=json.dumps(opData), headers={'Content-type': 'application/json'})
+        if response.json()['data']:
+            process_post(opData, block, quick=False)
+    elif opType == 'delete_comment':
         remove_post(opData)
-    if opType == 'transfer' and opData['to'] == ns:
+    elif opType == 'transfer' and opData['to'] == ns:
         # Format the data better
         amount, symbol = opData['amount'].split(" ")
         opData['amount'] = float(amount)
         opData['symbol'] = symbol
         # Process incoming transfer
         process_incoming_transfer(opData)
+
 
 def process_incoming_transfer(opData):
     # Save record of the op
@@ -214,6 +187,7 @@ def process_incoming_transfer(opData):
         # l(opData)
         # l(block)
         pass
+
 
 def update_funding(opData):
     db.funding.update({
@@ -270,6 +244,7 @@ def process_namespace_funding(opData):
             l('invalid namespace: {}'.format(opData['ns']))
             l(opData)
 
+
 def process_custom_op(custom_json):
     # Process the JSON
     op = json.loads(custom_json['json'])
@@ -296,6 +271,7 @@ def process_custom_op(custom_json):
         process_forum_config(opData, custom_json)
     if opType == 'moderate_post':
         process_moderate_post(opData, custom_json)
+
 
 def process_forum_config(opData, custom_json):
     operator = custom_json['required_posting_auths'][0]
@@ -331,6 +307,7 @@ def process_forum_config(opData, custom_json):
         pprint(custom_json)
         l('error processing')
         pass
+
 
 def process_forum_reserve(opData, custom_json):
     operator = custom_json['required_posting_auths'][0]
@@ -375,6 +352,7 @@ def process_moderate_post(opData, custom_json):
                 db.replies.update({'root_post': topic}, {'$pull': {
                     '_removedFrom': forum
                 }})
+
 
 def isModerator(user, forum):
     forum = db.forums.find_one({'_id': forum})
@@ -589,11 +567,6 @@ def process_vote(_id, author, permlink):
     # Grab the parsed data of the post
     # l(_id)
     comment = load_post(_id, author, permlink)
-
-    # tuanpa added here
-    if is_filtered(comment) == False:
-        return
-
     l(_id)
 
     # Ensure we a post was returned
@@ -614,8 +587,7 @@ def collapse_votes(votes):
     collapsed = []
     # Convert time to timestamps
     for key, vote in enumerate(votes):
-        votes[key]['time'] = int(datetime.strptime(
-            votes[key]['time'], '%Y-%m-%dT%H:%M:%S').strftime('%s'))
+        votes[key]['time'] = int(datetime.strptime(votes[key]['time'], '%Y-%m-%dT%H:%M:%S').strftime('%s'))
     # Sort based on time
     sortedVotes = sorted(votes, key=lambda k: k['time'])
     # Iterate and append to return value
@@ -629,19 +601,13 @@ def collapse_votes(votes):
 
 def process_post(opData, block, quick=False):
     # Derive the timestamp
-    ts = float(datetime.strptime(
-        block['timestamp'], '%Y-%m-%dT%H:%M:%S').strftime('%s'))
+    ts = float(datetime.strptime(block['timestamp'], '%Y-%m-%dT%H:%M:%S').strftime('%s'))
     # Create the author/permlink identifier
     author = opData['author']
     permlink = opData['permlink']
     _id = author + '/' + permlink
     # Grab the parsed data of the post
     comment = load_post(_id, author, permlink)
-
-    # tuanpa added here
-    if is_filtered(comment) == False:
-        return
-
     l(_id)
 
     if 'namespace' in opData:
@@ -695,6 +661,7 @@ def process_post(opData, block, quick=False):
 
 
 def rebuild_forums_cache():
+    l('rebuild_forums_cache')
     # l('rebuilding forums cache ({} forums)'.format(len(list(forums))))
     forums = db.forums.find()
     forums_cache.clear()
@@ -722,30 +689,27 @@ def process_vote_queue():
 
 
 def process_global_props():
+    l('process_global_props')
     global props
     global sbd_median_price
     props = d.get_dynamic_global_properties()
     # Save height
-    db.status.update({'_id': 'height'}, {
-                     '$set': {'value': props['last_irreversible_block_num']}}, upsert=True)
+    db.status.update({'_id': 'height'}, {'$set': {'value': props['last_irreversible_block_num']}}, upsert=True)
     # Save steem_per_mvests
     sbd_median_price = c.sbd_median_price()
-    db.status.update({'_id': 'sbd_median_price'}, {
-                     '$set': {'value': sbd_median_price}}, upsert=True)
-    db.status.update({'_id': 'steem_per_mvests'}, {
-                     '$set': {'value': c.steem_per_mvests()}}, upsert=True)
+    db.status.update({'_id': 'sbd_median_price'}, {'$set': {'value': sbd_median_price}}, upsert=True)
+    db.status.update({'_id': 'steem_per_mvests'}, {'$set': {'value': c.steem_per_mvests()}}, upsert=True)
     # l('Props updated to #{}'.format(props['last_irreversible_block_num']))
 
 
 def process_rewards_pools():
+    l('process_rewards_pools')
     # Save reward pool info
     fund = s.get_reward_fund('post')
     reward_balance = float(fund['reward_balance'].split(' ')[0])
-    db.status.update({'_id': 'reward_balance'}, {
-                     '$set': {'value': reward_balance}}, upsert=True)
+    db.status.update({'_id': 'reward_balance'}, {'$set': {'value': reward_balance}}, upsert=True)
     recent_claims = int(fund['recent_claims'].split(' ')[0])
-    db.status.update({'_id': 'recent_claims'}, {
-                     '$set': {'value': recent_claims}}, upsert=True)
+    db.status.update({'_id': 'recent_claims'}, {'$set': {'value': recent_claims}}, upsert=True)
 
 
 def process_platform_history():
@@ -774,6 +738,7 @@ def process_platform_history():
 
 
 def rebuild_bots_cache():
+    l('rebuild_bots_cache')
     global bots
     docs = db.bots.find()
     for bot in docs:
@@ -792,7 +757,7 @@ if __name__ == '__main__':
     rebuild_bots_cache()
 
     scheduler = BackgroundScheduler()
-    scheduler.add_job(process_global_props, 'interval', seconds=9, id='process_global_props')
+    scheduler.add_job(process_global_props, 'interval', seconds=30, id='process_global_props')
     scheduler.add_job(rebuild_forums_cache, 'interval', minutes=1, id='rebuild_forums_cache')
     scheduler.add_job(rebuild_bots_cache, 'interval', minutes=1, id='rebuild_bots_cache')
     scheduler.add_job(process_vote_queue, 'interval', seconds=15, id='process_vote_queue')
